@@ -91,6 +91,12 @@ app.get('/search', async (req, res) => {
     console.error('Database query error:', err);
     res.status(500).json({ error: 'An internal server error occurred.' });
   }
+  // Strong Caching test
+  const body = JSON.stringify(result);
+
+  res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=30');
+  res.setHeader('Timing-Allow-Origin', '*');
+  res.type('json').send(body);
 });
 
 // Start the Express server and listen for incoming requests
