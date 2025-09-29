@@ -2,122 +2,36 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Unified Problem Finder</title>
-    <style>
-        /* Styles for inside popup.html */
-        :root {
-            --primary-color: #7c5dfa;
-            --light-gray: #f0f2f5;
-            --text-color: #333;
-            --label-color: #555;
-        }
-        body {
-            margin: 0;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background-color: #fff;
-            color: var(--text-color);
-        }
-        .app {
-            padding: 20px;
-            height: 100vh;
-            box-sizing: border-box;
-            display: flex;
-            flex-direction: column;
-        }
-        header h1 {
-            font-size: 20px;
-            text-align: center;
-            margin: 0 0 20px 0;
-            color: var(--primary-color);
-        }
-        .search-box {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-        input, select {
-            flex-grow: 1;
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 8px;
-            font-size: 14px;
-            transition: border-color 0.2s, box-shadow 0.2s;
-        }
-        input:focus, select:focus {
-            outline: none;
-            border-color: var(--primary-color);
-            box-shadow: 0 0 0 2px rgba(124, 93, 250, 0.2);
-        }
-        button {
-            padding: 10px 15px;
-            border: none;
-            background-color: var(--primary-color);
-            color: white;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        button:hover {
-            background-color: #6a48d9;
-        }
-        #results {
-            flex-grow: 1;
-            overflow-y: auto;
-            border-top: 1px solid #eee;
-            padding-top: 15px;
-        }
-        .result-item {
-            background-color: var(--light-gray);
-            padding: 15px;
-            border-radius: 10px;
-            margin-bottom: 12px;
-        }
-        .result-item h4 {
-            margin: 0 0 10px 0;
-            font-size: 16px;
-        }
-        .details {
-            display: grid;
-            grid-template-columns: 100px 1fr;
-            gap: 5px;
-            font-size: 13px;
-        }
-        .label {
-            font-weight: 600;
-            color: var(--label-color);
-        }
-        .value a {
-            color: var(--primary-color);
-            text-decoration: none;
-            font-weight: 500;
-        }
-        .value a:hover {
-            text-decoration: underline;
-        }
-        .value .none { color: #999; }
-        .status-msg { text-align: center; color: #888; padding: 20px; font-size: 14px; }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Problem Finder</title>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="app">
-        <header><h1>Unified Problem Finder</h1></header>
-        <div class="search-box">
-            <input type="text" id="searchInput" placeholder="Enter ID or title...">
-            <select id="sourceSelect">
-                <option value="all">All Sources</option>
-                <option value="lc_title">LeetCode</option>
-                <option value="lint_title">LintCode</option>
+    <div class="search-container">
+        <h1 class="title">LeetCode Problem Finder</h1>
+        <div class="input-group">
+            <div class="search-box">
+                <!-- CORRECTED viewBox attribute below -->
+                <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" id="searchInput" placeholder="Enter ID or Title...">
+            </div>
+            <select id="sourceSelector">
+                <option value="all_sources">All Sources</option>
+                <option value="lc_id">LeetCode ID</option>
+                <option value="lc_title">LeetCode Title</option>
+                <option value="lint_id">LintCode ID</option>
+                <option value="lint_title">LintCode Title</option>
                 <option value="grind75">Grind75</option>
                 <option value="blind75">Blind75</option>
                 <option value="neetcode150">NeetCode150</option>
             </select>
-            <button id="searchButton" title="Search">🔍</button>
+            <button id="searchButton">Search</button>
         </div>
-        <div id="results">
-            <div class="status-msg">Enter a query to begin.</div>
+        <div id="resultsContainer">
+            <!-- Search results will be dynamically inserted here -->
         </div>
     </div>
-    <script src="popup.js" defer></script>
+    <script src="popup.js"></script>
 </body>
 </html>
 

@@ -1,85 +1,114 @@
-document.addEventListener('DOMContentLoaded', () => {
-    const searchInput = document.getElementById('searchInput');
-    const sourceSelect = document.getElementById('sourceSelect');
-    const searchButton = document.getElementById('searchButton');
-    const resultsContainer = document.getElementById('results');
+// This script waits for the DOM to be fully loaded before running,
+// ensuring that all HTML elements are available for selection.
 
-    // The API endpoint for our backend server, which we will build later.
+document.addEventListener('DOMContentLoaded', () => {
+    // --- Element Selections ---
+    // This line MUST find the element with the corresponding ID in popup.html
+    const searchInput = document.getElementById('searchInput');
+    const sourceSelect = document.getElementById('sourceSelector'); // Must match the <select> id
+    const searchButton = document.getElementById('searchButton');
+    const resultsContainer = document.getElementById('resultsContainer');
+
     const API_ENDPOINT = 'http://localhost:3000/search';
 
-    const performSearch = async () => {
-        const query = searchInput.value.trim();
-        const source = sourceSelect.value;
-        if (!query) {
-            resultsContainer.innerHTML = `<div class="status-msg">Please enter a search query.</div>`;
+    // --- Main Search Function ---
+    async function performSearch() {
+        // This check prevents the error if an element is somehow still not found.
+        if (!searchInput || !sourceSelect) {
+            console.error("Could not find search input or source select elements. Check HTML IDs.");
             return;
         }
 
-        resultsContainer.innerHTML = `<div class="status-msg">Searching...</div>`;
+        const query = searchInput.value.trim();
+        const source = sourceSelect.value; // This was the line causing the error.
+
+        if (!query) {
+            resultsContainer.innerHTML = '<div class="result-card"><p>Please enter a search term.</p></div>';
+            return;
+        }
+
+        resultsContainer.innerHTML = '<div class="result-card"><p>Searching...</p></div>';
 
         try {
-            // Send request to the backend API
             const response = await fetch(`${API_ENDPOINT}?query=${encodeURIComponent(query)}&source=${source}`);
+            
             if (!response.ok) {
-                throw new Error(`Network or server error (Status: ${response.status})`);
+                throw new Error(`Network response was not ok: ${response.statusText}`);
             }
+
             const results = await response.json();
             displayResults(results);
-        } catch (error) {
-            console.error('An error occurred during search:', error);
-            resultsContainer.innerHTML = `<div class="status-msg">Failed to fetch results.<br>Please ensure the backend server is running.</div>`;
-        }
-    };
 
-    const displayResults = (results) => {
+        } catch (error) {
+            console.error('Fetch error:', error);
+            resultsContainer.innerHTML = `<div class="result-card"><p>Error: Could not connect to the backend server. Is it running?</p></div>`;
+        }
+    }
+
+    // --- Display Results Function ---
+    function displayResults(results) {
         if (!results || results.length === 0) {
-            resultsContainer.innerHTML = `<div class="status-msg">No problems found.</div>`;
+            resultsContainer.innerHTML = '<div class="result-card"><p>No matching problems found.</p></div>';
             return;
         }
 
-        resultsContainer.innerHTML = ''; // Clear previous results or status messages
+        resultsContainer.innerHTML = ''; // Clear previous results
 
-        results.forEach(p => {
-            const item = document.createElement('div');
-            item.className = 'result-item';
-            const title = p.lc_title || p.lint_title || 'Unknown Problem';
+        results.forEach(problem => {
+            const card = document.createElement('div');
+            card.className = 'result-card';
 
-            // A helper function to render each detail line
-            const renderDetail = (label, value, isLink = false) => {
-                let displayValue;
-                if (value && value !== 'false') {
-                    if (isLink) {
-                        displayValue = `<a href="${value}" target="_blank">View Problem</a>`;
-                    } else {
-                        displayValue = (value === 'true' ? '✔️ Yes' : value);
-                    }
-                } else {
-                    displayValue = `<span class="none">None</span>`;
-                }
-                return `<div class="label">${label}:</div><div class="value">${displayValue}</div>`;
+            const tagsHtml = (tags) => {
+                if (!tags) return '<span>None</span>';
+                return tags.split(',').map(tag => `<span class="tag">${tag.trim()}</span>`).join('');
+            };
+            
+            const booleanFlag = (value, name) => {
+                const className = value ? 'flag-true' : 'flag-false';
+                return `<span class="flag ${className}">${name}</span>`;
             };
 
-            item.innerHTML = `
-                <h4>${title} (#${p.unified_id})</h4>
-                <div class="details">
-                    ${renderDetail('LeetCode ID', p.lc_id)}
-                    ${renderDetail('LeetCode URL', p.lc_url, true)}
-                    ${renderDetail('LintCode ID', p.lint_id)}
-                    ${renderDetail('LintCode URL', p.lint_url, true)}
-                    ${renderDetail('Grind75', String(p.grind75))}
-                    ${renderDetail('Blind75', String(p.blind75))}
-                    ${renderDetail('NeetCode150', String(p.neetcode150))}
-                </div>`;
-            resultsContainer.appendChild(item);
+            card.innerHTML = `
+                <div class="result-header">
+                    ${problem.lc_title || problem.lint_title || 'Unknown Problem'}
+                </div>
+                <div class="result-body">
+                    <div class="info-row">
+                        <strong>LeetCode:</strong>
+                        ${problem.lc_url ? `<a href="${problem.lc_url}" target="_blank">${problem.lc_id || ''} ${problem.lc_title} (${problem.lc_difficulty})</a>` : '<span class="none">None</span>'}
+                    </div>
+                    <div class="info-row">
+                        <strong>LintCode:</strong>
+                        ${problem.lint_url ? `<a href="${problem.lint_url}" target="_blank">${problem.lint_id || ''} ${problem.lint_title} (${problem.lint_difficulty})</a>` : '<span class="none">None</span>'}
+                    </div>
+                    <div class="info-row">
+                        <strong>LC Tags:</strong>
+                        <div class="tag-list">${tagsHtml(problem.lc_tags)}</div>
+                    </div>
+                    <div class="info-row">
+                        <strong>On Lists:</strong>
+                        <div class="boolean-flags">
+                            ${booleanFlag(problem.grind75, 'Grind75')}
+                            ${booleanFlag(problem.blind75, 'Blind75')}
+                            ${booleanFlag(problem.neetcode150, 'NeetCode150')}
+                        </div>
+                    </div>
+                </div>
+            `;
+            resultsContainer.appendChild(card);
         });
-    };
+    }
 
-    // Bind events
-    searchButton.addEventListener('click', performSearch);
-    searchInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            performSearch();
-        }
-    });
+    // --- Event Listeners ---
+    if (searchButton) {
+        searchButton.addEventListener('click', performSearch);
+    }
+    if (searchInput) {
+        searchInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                performSearch();
+            }
+        });
+    }
 });
 
