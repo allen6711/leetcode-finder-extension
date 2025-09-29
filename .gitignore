@@ -1,1 +1,6 @@
 *.csv
+**/icons
+*.env
+**/node_modules
+.env
+.env.*
