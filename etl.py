@@ -249,7 +249,7 @@ def load(tables: dict):
 # MAIN
 # ─────────────────────────────────────────────
 if __name__ == "__main__":
-    CSV_PATH = "coding_problems_database.csv"
+    CSV_PATH = "coding_problems_database.corrected.csv"
 
     raw = extract(CSV_PATH)
     tables = transform(raw)
