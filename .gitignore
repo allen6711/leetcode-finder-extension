@@ -1,5 +1,24 @@
+# Dependencies
+node_modules/
+
+# Environment variables (contains DB credentials)
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# CSV files
 *.csv
-*.env
-*.DS_Store
-icons/*
-node_modules/*
+
+# CSV files
+icons/
