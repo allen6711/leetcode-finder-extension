@@ -1,165 +1,228 @@
 # High-Performance LeetCode Query Engine
 
-A database-driven full-stack app plus Chrome MV3 extension for searching coding problems across multiple sources (LeetCode, LintCode, and curated study lists such as Grind75, Blind75, and NeetCode150).  
+A database-driven full-stack app plus Chrome MV3 extension for searching coding problems across multiple sources (LeetCode, LintCode, and curated study lists such as Grind75, Blind75, and NeetCode150).
 
-The backend exposes a fast REST API on top of PostgreSQL, and the extension provides a lightweight search UI directly inside the browser.
+A Python ETL pipeline normalizes raw data into 5 PostgreSQL tables with targeted indexes, and an Express API serves sub-50ms search queries consumed by a Manifest V3 Chrome extension.
 
 ---
 
 ## Overview
 
-- **Project name**: High-Performance LeetCode Query Engine  
-- **Extension name**: `Unified Problem Finder` (see `manifest.json`)  
-- **Tech Stack**: JavaScript, Node.js, Express, PostgreSQL, Chrome MV3, HTML/CSS  
-
-This project was built to provide a sub-50ms search experience over ~3,700 coding problems using a normalized PostgreSQL schema and a small Express API, consumed by a Manifest V3 Chrome extension.
+- **Project name**: High-Performance LeetCode Query Engine
+- **Extension name**: `Unified Problem Finder` (see `manifest.json`)
+- **Tech Stack**: Python (Pandas), JavaScript, Node.js, Express, PostgreSQL, Chrome MV3, HTML/CSS
 
 ---
 
 ## Features
 
-- **Unified problem catalog**
-  - Integrates ~3,700 coding problems from **5 sources** into a single normalized PostgreSQL table:
-    - LeetCode (IDs, titles, slugs, URLs, difficulties, tags)
-    - LintCode (IDs, titles, URLs, difficulties, tags)
-    - Boolean flags for curated lists: **Grind75**, **Blind75**, **NeetCode150**
+- **Python ETL Pipeline**
+  - Extracts ~3,700 coding problems from a combined CSV covering 5 sources
+  - Transforms raw data: cleans nulls, standardizes formats, explodes comma-separated tags into individual rows
+  - Loads into a **normalized** PostgreSQL schema (5 tables with foreign keys)
+  - Includes data validation and row-count verification
 
-- **High-performance search API**
+- **Normalized PostgreSQL Schema**
+  - 5 tables: `problems`, `leetcode_info`, `lintcode_info`, `curated_lists`, `tags`
+  - Eliminates redundancy (tags stored as individual rows, not comma-separated strings)
+  - Targeted index strategy:
+    - **B-tree** indexes on `lc_id`, `lint_id` for exact ID lookup
+    - **GIN trigram** indexes on `lc_title`, `lint_title` for ILIKE substring search
+    - **Partial** indexes on `grind75`, `blind75`, `neetcode150` boolean flags
+    - **Composite** index on `tags(unified_id, source)` for efficient tag aggregation
+
+- **High-Performance Search API**
   - Express server with a `GET /search` endpoint
-  - Parameterized SQL queries (no string concatenation of user input)
+  - Parameterized SQL with JOINs across normalized tables (prevents SQL injection)
+  - Backward-compatible JSON response (Chrome extension works without changes)
   - Designed to return typical queries in **under 50ms** on a local PostgreSQL instance
 
-- **Chrome MV3 extension UI**
-  - Popup-based UI (`popup.html`, `popup.js`, `styles.css`)
-  - Filters by:
-    - LeetCode / LintCode ID
-    - LeetCode / LintCode title
-    - Grind75 / Blind75 / NeetCode150 membership
-  - Renders results as cards with links, difficulty, and tag chips
-
-- **Robust ETL / data import**
-  - `setup_database.sql` defines the `problems` table
-  - Uses `\copy` with explicit CSV options to load `coding_problems_database.csv`
-  - CSVs include LeetCode / LintCode metadata plus curated-list flags
+- **Chrome MV3 Extension UI**
+  - Popup-based search interface (`popup.html`, `popup.js`, `styles.css`)
+  - Filters by LeetCode/LintCode ID, title, and Grind75/Blind75/NeetCode150 membership
+  - Renders results as cards with links, difficulty badges, and tag chips
 
 ---
 
 ## Architecture
 
-### High-Level Diagram
-
-```text
-+------------------------+        HTTP (JSON)        +----------------------+
-|  Chrome MV3 Extension  |  <--------------------->  |   Express.js API     |
-| (popup.html / js / css)|   GET /search?query=...   |   (server.js)        |
-+------------------------+                           +----------+-----------+
-                                                               |
-                                                               | Parameterized SQL
-                                                               v
-                                                     +----------------------+
-                                                     |   PostgreSQL DB      |
-                                                     |   (problems table)   |
-                                                     +----------------------+
+```
+                                    ┌──────────────────────────┐
+                                    │   coding_problems.csv    │
+                                    └────────────┬─────────────┘
+                                                 │
+                                                 ▼
+                                    ┌──────────────────────────┐
+                                    │   Python ETL (etl.py)    │
+                                    │  Extract → Transform →   │
+                                    │  Load into PostgreSQL    │
+                                    └────────────┬─────────────┘
+                                                 │
+                                                 ▼
+┌────────────────────────┐        HTTP         ┌──────────────────────────┐
+│  Chrome MV3 Extension  │  ◄──── JSON ────►   │   Express API            │
+│  (popup.html/js/css)   │  GET /search?...    │   (server.js)            │
+└────────────────────────┘                     └────────────┬─────────────┘
+                                                            │
+                                               Parameterized SQL + JOINs
+                                                            │
+                                                            ▼
+                                               ┌──────────────────────────┐
+                                               │      PostgreSQL          │
+                                               │  ┌──────────────────┐   │
+                                               │  │    problems       │   │
+                                               │  │    leetcode_info  │   │
+                                               │  │    lintcode_info  │   │
+                                               │  │    curated_lists  │   │
+                                               │  │    tags           │   │
+                                               │  └──────────────────┘   │
+                                               └──────────────────────────┘
 ```
 
-## Key Components
-- Frontend (extension)
-  - `manifest.json` – Chrome MV3 manifest; defines `Unified Problem Finder` action
-  - `popup.html` – search input, source selector, results container
-  - `styles.css` – styling for the popup
-  - `popup.js` – calls the backend API at `http://localhost:3000/search` and renders results
+---
 
-- Backend (API)
-  - `server.js`
-    - Uses `express`, `pg`, `cors`, `dotenv`
-    - Reads DB credentials from `.env`
-    - Implements `GET /search?query=<query>&source=<source>`
-    - Builds parameterized SQL based on `source`
-    - Returns JSON rows from the `problems` table
+## Database Schema
 
-- Database
-  - PostgreSQL database (e.g., `leetcode_finder`)
-  - `setup_database.sql`:
-    - Drops and recreates `problems` table
-    - Imports `coding_problems_database.csv` via `\copy`
-    - Includes sanity checks: `SELECT count(*)`, sample rows, etc.
+### Entity-Relationship Diagram
 
---- 
+```
+problems (1) ──── (1) leetcode_info
+    │
+    ├──────── (1) lintcode_info
+    │
+    ├──────── (1) curated_lists
+    │
+    └──────── (N) tags
+```
+
+### Table Definitions
+
+**`problems`** — core identity table
+
+| Column     | Type        | Description                     |
+|------------|-------------|---------------------------------|
+| unified_id | INT PK      | Internal ID tying all sources   |
+| relation   | VARCHAR(50) | Relationship between LC and LintCode entries |
+
+**`leetcode_info`** — LeetCode-specific fields
+
+| Column        | Type         | Description          |
+|---------------|--------------|----------------------|
+| unified_id    | INT PK, FK   | → problems           |
+| lc_id         | INT          | LeetCode problem ID  |
+| lc_slug       | VARCHAR(255) | URL slug             |
+| lc_title      | VARCHAR(255) | Problem title        |
+| lc_url        | TEXT         | Full URL             |
+| lc_difficulty | VARCHAR(50)  | Easy / Medium / Hard |
+
+**`lintcode_info`** — LintCode-specific fields
+
+| Column          | Type         | Description           |
+|-----------------|--------------|-----------------------|
+| unified_id      | INT PK, FK   | → problems            |
+| lint_id         | INT          | LintCode problem ID   |
+| lint_title      | VARCHAR(255) | Problem title         |
+| lint_url        | TEXT         | Full URL              |
+| lint_difficulty | VARCHAR(50)  | Easy / Medium / Hard  |
+
+**`curated_lists`** — study list membership flags
+
+| Column      | Type       | Description          |
+|-------------|------------|----------------------|
+| unified_id  | INT PK, FK | → problems           |
+| grind75     | BOOLEAN    | In Grind75 list?     |
+| blind75     | BOOLEAN    | In Blind75 list?     |
+| neetcode150 | BOOLEAN    | In NeetCode150 list? |
+
+**`tags`** — normalized tags (one row per tag)
+
+| Column     | Type         | Description                          |
+|------------|--------------|--------------------------------------|
+| id         | SERIAL PK    | Auto-increment ID                    |
+| unified_id | INT FK       | → problems                           |
+| source     | VARCHAR(20)  | 'leetcode' or 'lintcode'             |
+| tag_name   | VARCHAR(100) | e.g. 'Array', 'Hash Table', 'DP'    |
+
+### Why Normalize?
+
+The original schema stored everything in a single flat table with tags as comma-separated strings (e.g., `"Array,Hash Table"`).
+
+The normalized design improves the project in three ways:
+
+1. **Query flexibility** — Finding all problems tagged "Array" is now a simple `WHERE tag_name = 'Array'` instead of application-level string parsing.
+2. **Data integrity** — Foreign keys ensure every `leetcode_info` row references a valid `problems` entry.
+3. **Independent updates** — Curated list flags can change without touching LeetCode or LintCode metadata.
+
+**Trade-off**: Queries now require JOINs, which adds complexity. For ~3,700 problems this overhead is negligible, and the `string_agg()` subqueries in `server.js` reconstruct the comma-separated format so the Chrome extension works without changes.
+
+---
+
+## Index Strategy
+
+Indexes are designed around the actual query patterns in `server.js`:
+
+| Index | Type | Query Pattern | Why This Type |
+|-------|------|---------------|---------------|
+| `idx_lc_id` | B-tree | `WHERE lc_id = $1` | Default index type; O(log n) equality lookup |
+| `idx_lint_id` | B-tree | `WHERE lint_id = $1` | Same as above for LintCode |
+| `idx_lc_title_trgm` | GIN trigram | `WHERE lc_title ILIKE '%keyword%'` | B-tree cannot support leading-wildcard patterns; GIN trigram indexes 3-character chunks to enable fast substring matching |
+| `idx_lint_title_trgm` | GIN trigram | `WHERE lint_title ILIKE '%keyword%'` | Same as above for LintCode |
+| `idx_grind75` | Partial | `WHERE grind75 = TRUE` | Only ~75 of ~3,700 rows are TRUE (2%). A full boolean index has low selectivity and is often ignored by the planner. Partial index stores only matching rows → tiny and fast |
+| `idx_blind75` | Partial | `WHERE blind75 = TRUE` | Same reasoning (~75 rows) |
+| `idx_neetcode150` | Partial | `WHERE neetcode150 = TRUE` | Same reasoning (~150 rows) |
+| `idx_tags_lookup` | Composite B-tree | `WHERE unified_id = $1 AND source = 'leetcode'` | Covers both filter columns in a single index lookup (potential index-only scan) |
+| `idx_tags_name` | B-tree | `WHERE tag_name = 'Array'` | Supports future tag-based search feature |
+
+### Verifying Index Usage
+
+```sql
+-- Should show "Bitmap Index Scan on idx_lc_title_trgm"
+EXPLAIN ANALYZE
+SELECT * FROM leetcode_info WHERE lc_title ILIKE '%two sum%';
+
+-- Should show "Index Scan using idx_lc_id"
+EXPLAIN ANALYZE
+SELECT * FROM leetcode_info WHERE lc_id = 1;
+
+-- Should show "Index Scan using idx_grind75"
+EXPLAIN ANALYZE
+SELECT * FROM curated_lists WHERE grind75 = TRUE;
+```
+
+---
 
 ## Tech Stack
-- Frontend
-  - Chrome Extension (Manifest V3)
-  - HTML / CSS
-  - Vanilla JavaScript
-- Backend
-  - Node.js
-  - Express
-  - `pg` (PostgreSQL client)
-  - `cors`
-  - `dotenv`
 
-- Database
-  - PostgreSQL
-  - Bulk CSV import via `\copy`
+| Layer    | Technology                               |
+|----------|------------------------------------------|
+| ETL      | Python 3, Pandas, psycopg2               |
+| Backend  | Node.js, Express, pg (PostgreSQL client), cors, dotenv |
+| Database | PostgreSQL, pg_trgm extension            |
+| Frontend | Chrome Extension (Manifest V3), HTML, CSS, Vanilla JavaScript |
 
 ---
 
 ## Getting Started
-1. Prerequisites
-- Node.js (v18+ recommended)
-- npm
+
+### Prerequisites
+
+- Python 3.8+ with pip
+- Node.js v18+
 - PostgreSQL (local instance)
-- `psql` CLI available on PATH
- - Google Chrome (for loading the extension)
+- Google Chrome
 
-2. Clone the repository
+### 1. Clone the Repository
+
 ```bash
-git clone https://github.com/your-username/leetcode-query-engine.git
-cd leetcode-query-engine/leetcode-finder-extension
+git clone https://github.com/allen6711/leetcode-finder-extension.git
+cd leetcode-finder-extension
 ```
 
-Replace `your-username` and the repo name with your actual GitHub path if needed.
+### 2. Configure Environment Variables
 
-3. Install backend dependencies
-```bash
-npm install
+Create a `.env` file:
+
 ```
-This installs `express`, `pg`, `cors`, `dotenv`, etc.
-
-4. Set up PostgreSQL
-
-  1. Create the database (example name: `leetcode_finder`):
-```bash
-createdb leetcode_finder
-```
-
-  2. Create table and import data
-
-  From the `leetcode-finder-extension` folder, start `psql`:
-```bash
-psql -d leetcode_finder
-```
-
-  Then inside the `psql` shell:
-```sql
-\i setup_database.sql;
-```
-  The script will: 
-  - Drop and recreate the `problems` table
-  - Load `coding_problems_database.csv` with a robust `\copy`
-  - Run simple validation queries
-
-Make sure `coding_problems_database.csv` is in the same directory that `psql` is launched from, or adjust the path inside `setup_database.sql`.
-
-5. Configure environment variables
-
-Create a `.env` file in `leetcode-finder-extension`:
-```bash
-touch .env
-```
-
-Add your PostgreSQL credentials:
-```env
 DB_USER=your_db_username
 DB_PASSWORD=your_db_password
 DB_HOST=localhost
@@ -167,142 +230,204 @@ DB_PORT=5432
 DB_DATABASE=leetcode_finder
 ```
 
-6. Run the backend server
+### 3. Create the Database
+
 ```bash
+createdb leetcode_finder
+```
+
+Enable the trigram extension (requires superuser or the extension to be available):
+
+```bash
+psql -d leetcode_finder -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+```
+
+### 4. Run the ETL Pipeline
+
+```bash
+# Install Python dependencies
+pip install pandas psycopg2-binary python-dotenv
+
+# Run ETL (creates tables, indexes, and loads data)
+python etl.py
+```
+
+Expected output:
+
+```
+[Extract] Reading coding_problems_database.csv ...
+[Extract] Loaded 3700 rows, 16 columns
+[Transform] Cleaning and normalizing ...
+[Transform] problems:       3700 rows
+[Transform] leetcode_info:  2800 rows
+[Transform] lintcode_info:  2600 rows
+[Transform] curated_lists:  3700 rows
+[Transform] tags:          18500 rows (exploded from comma-separated)
+[Load] Creating schema and indexes ...
+[Load] problems: 3700 rows inserted
+[Load] leetcode_info: 2800 rows inserted
+[Load] lintcode_info: 2600 rows inserted
+[Load] curated_lists: 3700 rows inserted
+[Load] tags: 18500 rows inserted
+
+✅ ETL pipeline completed successfully!
+```
+
+*(Row counts are approximate and depend on the actual CSV data.)*
+
+### 5. Verify Indexes (Optional)
+
+```bash
+psql -d leetcode_finder -c "EXPLAIN ANALYZE SELECT * FROM leetcode_info WHERE lc_title ILIKE '%two sum%';"
+```
+
+Look for `Bitmap Index Scan on idx_lc_title_trgm` in the output.
+
+### 6. Start the Backend Server
+
+```bash
+npm install
 node server.js
 ```
 
-You should see:
-```text
+```
 ✅ Backend server is running at http://localhost:3000
 ```
 
 Test the API:
+
 ```bash
+# Search by title
 curl "http://localhost:3000/search?query=two%20sum&source=lc_title"
+
+# Search by ID
+curl "http://localhost:3000/search?query=1&source=lc_id"
+
+# Health check (shows table row counts)
+curl "http://localhost:3000/health"
 ```
----
-## Load the Chrome MV3 Extension
-1. Open Chrome and go to `chrome://extensions/`.
+
+### 7. Load the Chrome Extension
+
+1. Open `chrome://extensions/` in Chrome.
 2. Enable **Developer mode**.
-3. Click **Load unpacked**.
-4. Select the `leetcode-finder-extension` folder.
-5. Pin **Unified Problem Finder** to the toolbar if you want quick access.
-
-The popup communicates with `http://localhost:3000/search`.
-If you change the backend host/port, update `API_ENDPOINT` in `popup.js`.
+3. Click **Load unpacked** and select the project folder.
+4. Pin **Unified Problem Finder** to the toolbar.
 
 ---
-
-## Usage
-1. Click the extension icon to open the popup.
-2. Enter a query (e.g., two sum, binary tree, 1).
-3. Choose a Source:
-    - `All Sources`
-    - `LeetCode ID` / `LeetCode Title`
-    - `LintCode ID` / `LintCode Title`
-    - `Grind75`
-    - `Blind75`
-    - `NeetCode150`
-4. Click **Search** or **press** Enter.
-
-Each result card displays:
-- LeetCode and/or LintCode titles with direct links
-- Difficulty (Easy / Medium / Hard)
-- Tag list (e.g., `Array`, `Hash Table`)
-- Flags indicating whether the problem is in Grind75 / Blind75 / NeetCode150
-
-
----
-
-## Database Schema
-
-Defined in `setup_database.sql`:
-
-```sql
-CREATE TABLE problems (
-    unified_id      INT PRIMARY KEY,
-    lc_id           INT,
-    lc_slug         VARCHAR(255),
-    lc_title        VARCHAR(255),
-    lc_url          TEXT,
-    lc_difficulty   VARCHAR(50),
-    lc_tags         TEXT,
-    lint_id         INT,
-    lint_title      VARCHAR(255),
-    lint_url        TEXT,
-    lint_difficulty VARCHAR(50),
-    lint_tags       TEXT,
-    grind75         BOOLEAN,
-    blind75         BOOLEAN,
-    neetcode150     BOOLEAN,
-    relation        VARCHAR(50)
-);
-```
-- `unified_id`: internal ID tying all sources for the same logical problem
-- `relation`: relationship between LeetCode and LintCode entries (e.g., equivalent/related)
 
 ## API Reference
-`GET /search`
 
-Search problems based on a query and source.
+### `GET /search`
 
-### Request
-```http
-GET /search?query=<query>&source=<source>
-```
+Search problems by ID, title, or curated list membership.
 
-- `query`: user input (ID, title substring, or keyword)
-- `source`: one of:
-  - `lc_id`, `lint_id`
-  - `lc_title`, `lint_title`
-  - `grind75`, `blind75`, `neetcode150`
-  - `all_sources`
+**Parameters:**
 
-### Example
+| Param  | Required | Description |
+|--------|----------|-------------|
+| query  | Yes      | Search keyword (ID number or title substring) |
+| source | Yes      | One of: `lc_id`, `lint_id`, `lc_title`, `lint_title`, `grind75`, `blind75`, `neetcode150`, `all_sources` |
+
+**Example:**
+
 ```bash
 curl "http://localhost:3000/search?query=two%20sum&source=all_sources"
 ```
 
-### Response (example)
+**Response:**
+
 ```json
 [
   {
     "unified_id": 1,
+    "relation": "equivalent",
     "lc_id": 1,
+    "lc_slug": "two-sum",
     "lc_title": "Two Sum",
     "lc_url": "https://leetcode.com/problems/two-sum/",
     "lc_difficulty": "Easy",
-    "lc_tags": "Array,Hash Table",
     "lint_id": 56,
     "lint_title": "Two Sum",
     "lint_url": "https://www.lintcode.com/problem/two-sum/",
     "lint_difficulty": "Easy",
-    "lint_tags": "Array,Hash Table",
     "grind75": true,
     "blind75": true,
     "neetcode150": true,
-    "relation": "equivalent"
+    "lc_tags": "Array,Hash Table",
+    "lint_tags": "Array,Hash Table"
   }
 ]
 ```
 
-Error responses are returned with appropriate HTTP status codes:
-- `400` – invalid or missing `query` / `source`
-- `500` – internal server or database error
+**Error Codes:**
+
+| Code | Meaning |
+|------|---------|
+| 400  | Missing or invalid `query` / `source` |
+| 500  | Internal server or database error |
+
+### `GET /health`
+
+Returns table row counts for quick verification.
+
+```json
+{
+  "status": "ok",
+  "tables": {
+    "problems": 3700,
+    "leetcode_info": 2800,
+    "lintcode_info": 2600,
+    "curated_lists": 3700,
+    "tags": 18500
+  }
+}
+```
 
 ---
 
-## Development Notes & Future Work
-- Add PostgreSQL indexes on lc_id, lint_id, lc_title, lint_title, and curated-list flags to keep queries fast as the dataset grows.
-- Extend the schema and ETL pipeline to include more platforms or custom lists.
-- Enhance the UI with:
-  - Difficulty filters
-  - Tag filters
-  - Combined list filters (e.g., “in Grind75 and NeetCode150”)
-- Containerize the backend and database with Docker for easier local setup.
+## Project Structure
 
---- 
+```
+leetcode-finder-extension/
+├── etl.py                  # Python ETL pipeline (Extract → Transform → Load)
+├── setup_database.sql      # DDL reference (same schema as etl.py, for manual setup)
+├── server.js               # Express API with JOIN queries on normalized tables
+├── popup.html              # Chrome extension popup UI
+├── popup.js                # Frontend logic (calls /search API)
+├── styles.css              # Extension styling
+├── manifest.json           # Chrome MV3 manifest
+├── coding_problems_database.csv  # Raw data (input to ETL)
+├── package.json            # Node.js dependencies
+├── .env                    # Database credentials (not committed)
+├── .gitignore              # Ignores node_modules, .env, __pycache__
+└── README.md
+```
+
+---
+
+## Design Decisions
+
+| Decision | Choice | Reasoning |
+|----------|--------|-----------|
+| ETL language | Python (Pandas) | Data cleaning and transformation is Pandas' strength (null handling, type conversion, exploding comma-separated fields). Node.js is better suited for the API server. |
+| Schema design | Normalized (5 tables) | Eliminates tag redundancy, enables direct SQL queries on tags, enforces referential integrity via foreign keys. |
+| ILIKE index | GIN trigram (`pg_trgm`) | Standard B-tree indexes cannot accelerate leading-wildcard patterns (`%keyword%`). Trigram indexes decompose text into 3-char chunks for fast substring matching. |
+| Boolean index | Partial index | Only ~2% of rows have `grind75 = TRUE`. A full index on a boolean column has very low selectivity and is typically ignored by the query planner. Partial indexes store only matching rows. |
+| Tag storage | Separate `tags` table | Comma-separated strings require application-level parsing. Normalized rows enable `WHERE tag_name = 'Array'` directly in SQL. |
+| API response format | Flat JSON with `string_agg()` | JOINs and subqueries reconstruct the original flat format, so the Chrome extension works without any frontend changes. |
+
+---
+
+## Future Work
+
+- Add `GET /search?tag=Array` endpoint leveraging `idx_tags_name` index.
+- Add difficulty and combined list filters to the extension UI.
+- Containerize the backend and database with Docker Compose for one-command setup.
+- Add CI pipeline (GitHub Actions) with automated tests.
+- Benchmark queries with `EXPLAIN ANALYZE` and document P50/P99 latencies.
+
+---
 
 ## License
 
