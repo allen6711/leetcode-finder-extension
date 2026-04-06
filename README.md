@@ -69,13 +69,13 @@ A Python ETL pipeline normalizes raw data into 5 PostgreSQL tables with targeted
                                                             ▼
                                                ┌──────────────────────────┐
                                                │      PostgreSQL          │
-                                               │  ┌──────────────────┐   │
-                                               │  │    problems       │   │
-                                               │  │    leetcode_info  │   │
-                                               │  │    lintcode_info  │   │
-                                               │  │    curated_lists  │   │
-                                               │  │    tags           │   │
-                                               │  └──────────────────┘   │
+                                               │  ┌──────────────────┐    │
+                                               │  │    problems      │    │
+                                               │  │    leetcode_info │    │
+                                               │  │    lintcode_info │    │
+                                               │  │    curated_lists │    │
+                                               │  │    tags          │    │
+                                               │  └──────────────────┘    │
                                                └──────────────────────────┘
 ```
 
